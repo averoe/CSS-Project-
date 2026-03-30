@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Hash Collision & Integrity Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- CryptoJS for hashing (front-end only) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js" defer></script>
+  <style>
+    :root {
+      --bg: #080a0d;
+      --panel: rgba(255,255,255,0.04);
+      --panel-strong: rgba(255,255,255,0.08);
+      --text: #e9edf5;
+      --muted: #9aa3b5;
+      --accent: #4da3ff;
+      --good: #5dd39e;
+      --bad: #ff6b6b;
+      --border: rgba(255,255,255,0.08);
+      --blur: 16px;
+      --shadow: 0 20px 50px rgba(0,0,0,0.45);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+      background: radial-gradient(circle at 20% 20%, rgba(77,163,255,0.08), transparent 25%),
+                  radial-gradient(circle at 80% 10%, rgba(93,211,158,0.1), transparent 25%),
+                  var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 32px 16px 64px;
+    }
+    .shell { width: min(1200px, 100%); }
+    header {
+      padding: 24px 28px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      backdrop-filter: blur(var(--blur));
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+    header::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(77,163,255,0.16), rgba(93,211,158,0.12), transparent 45%);
+      opacity: 0.7;
+      pointer-events: none;
+    }
+    .hero { position: relative; z-index: 1; display: grid; gap: 8px; }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+    }
+    .title { font-size: clamp(28px, 4vw, 38px); font-weight: 700; margin: 0; line-height: 1.15; }
+    .subtitle { margin: 0; color: var(--muted); max-width: 820px; line-height: 1.5; font-size: 16px; }
+    .grid { display: grid; gap: 16px; margin-top: 18px; }
+    .cards-3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 18px 16px;
+      backdrop-filter: blur(var(--blur));
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+    .panel::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(150deg, rgba(255,255,255,0.04), transparent 40%);
+      pointer-events: none;
+    }
+    .panel h3 { margin: 0 0 6px; font-size: 17px; display: flex; align-items: center; gap: 10px; font-weight: 600; }
+    .panel p, .small { margin: 0; color: var(--muted); line-height: 1.5; font-size: 14px; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px;
+      border-radius: 10px; background: var(--panel-strong); border: 1px solid var(--border);
+      color: var(--text); font-size: 13px; font-weight: 600;
+    }
+    .section-title { margin: 32px 0 12px; font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+    textarea, input[type="text"] {
+      width: 100%; background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+      color: var(--text); border-radius: 10px; padding: 12px; font-size: 14px;
+      transition: border 0.2s ease, box-shadow 0.2s ease;
+    }
+    textarea:focus, input[type="text"]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(77,163,255,0.18); }
+    textarea { min-height: 120px; resize: vertical; }
+    .hash-row {
+      display: grid; grid-template-columns: 110px 1fr auto; gap: 10px; align-items: center;
+      font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace; font-size: 13px;
+      padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border); transition: background 0.3s ease, border 0.3s ease; word-break: break-all;
+    }
+    .hash-row.changed { background: rgba(255,107,107,0.06); border-color: rgba(255,107,107,0.45); }
+    .hash-row .label { color: var(--muted); font-weight: 600; }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px; padding: 11px 14px;
+      border-radius: 10px; border: 1px solid rgba(255,255,255,0.12);
+      background: linear-gradient(120deg, rgba(77,163,255,0.18), rgba(77,163,255,0.08));
+      color: var(--text); font-weight: 600; cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.2s ease, border 0.2s ease;
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(0,0,0,0.35); }
+    .btn.secondary { background: rgba(255,255,255,0.04); }
+    .btn.icon {
+      width: 34px; height: 34px; padding: 0; justify-content: center;
+      background: rgba(255,255,255,0.04);
+    }
+    .file-input { display: none; }
+    .file-label { cursor: pointer; }
+    .pill { padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,0.05); color: var(--muted); font-size: 12px; font-weight: 600; }
+    .status {
+      display: inline-flex; align-items: center; gap: 8px; padding: 9px 12px;
+      border-radius: 10px; font-weight: 600; color: var(--text);
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+    }
+    .status.good { border-color: rgba(93,211,158,0.55); color: #c7f5df; }
+    .status.bad { border-color: rgba(255,107,107,0.55); color: #ffd7d7; }
+    .muted { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    .theory-bullets { display: grid; gap: 8px; margin-top: 8px; }
+    .theory-bullets li { list-style: none; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); color: var(--muted); line-height: 1.4; font-size: 14px; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .panel, header { animation: fadeIn 0.6s ease both; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="hero">
+        <div class="eyebrow">
+          <span aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c4.97-4.686 8-8.686 8-12a8 8 0 1 0-16 0c0 3.314 3.03 7.314 8 12z"></path><circle cx="12" cy="10" r="3"></circle></svg></span>
+          Cryptography | Hashes | Integrity
+        </div>
+        <h1 class="title">Hash Collision &amp; Integrity Demo</h1>
+        <p class="subtitle">
+          Explore how cryptographic hashes secure integrity: avalanche effect, collision resistance, and verifying data tampering. Pure front-end, pitch-black professional UI with Lucide-style icons.
+        </p>
+      </div>
+    </header>
+
+    <div class="section-title">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 14.5V10a7 7 0 0 0-7-7h-4a7 7 0 0 0-7 7v4.5"></path><rect x="3" y="14.5" width="18" height="7" rx="2.5"></rect><path d="M7 18h0.01"></path><path d="M12 18h0.01"></path><path d="M17 18h0.01"></path></svg>
+      Core theory (landing)
+    </div>
+    <div class="grid cards-3">
+      <div class="panel">
+        <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c4.97-4.686 8-8.686 8-12a8 8 0 1 0-16 0c0 3.314 3.03 7.314 8 12z"></path><circle cx="12" cy="10" r="3"></circle></svg> Hash functions</h3>
+        <p>Deterministic, fixed-length digest of arbitrary input. One-way and fast to compute.</p>
+        <ul class="theory-bullets">
+          <li>Preimage resistance: hard to find a message for a given hash.</li>
+          <li>Second preimage: hard to find another message with the same hash.</li>
+          <li>Collision resistance: hard to find any two messages with the same hash.</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12c2.828 0 5.657 1.06 7.778 3.182a1 1 0 0 1 0 1.415C17.657 18.719 14.828 19.78 12 19.78c-2.828 0-5.657-1.06-7.778-3.182a1 1 0 0 1 0-1.415C6.343 13.06 9.172 12 12 12z"></path><circle cx="12" cy="12" r="3"></circle></svg> Avalanche effect</h3>
+        <p>A tiny input change yields a drastically different digest. Small mutations destroy predictability.</p>
+        <ul class="theory-bullets">
+          <li>Integrity breaks are obvious: any tampering changes the digest.</li>
+          <li>No structure leaks: output appears random.</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h7v16H4z"></path><path d="M14 4h6v4h-6z"></path><path d="M14 12h6v8h-6z"></path></svg> Integrity checks</h3>
+        <p>Store or transmit a hash alongside data. Recompute and compare to detect tampering.</p>
+        <ul class="theory-bullets">
+          <li>Use SHA-256/512 for modern integrity; avoid MD5 for collision risk.</li>
+          <li>For authenticity, pair with signatures or HMAC.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section-title" style="margin-top:32px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
+      Live demo: hashes &amp; avalanche
+    </div>
+    <div class="panel">
+      <div class="row" style="justify-content: space-between; align-items: flex-start;">
+        <div style="flex:1; min-width:260px;">
+          <div class="badge">Input</div>
+          <textarea id="inputText" placeholder="Type or paste text to hash...">The quick brown fox jumps over the lazy dog.</textarea>
+          <div class="row" style="margin-top:10px;">
+            <button class="btn" id="mutateBtn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><polyline points="23 20 23 14 17 14"></polyline><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"></path></svg>
+              Flip 1 char
+            </button>
+            <div class="pill">Watch the hashes jump (avalanche)</div>
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <button class="btn secondary" data-preset="pangram">Preset: Pangram</button>
+            <button class="btn secondary" data-preset="lorem">Preset: Lorem</button>
+            <button class="btn secondary" data-preset="json">Preset: JSON blob</button>
+          </div>
+        </div>
+        <div style="flex:1.1; min-width:320px;">
+          <div class="badge">Digests</div>
+          <div id="hashes"></div>
+          <p class="muted" style="margin-top:8px;">MD5 shown for illustration; use SHA-256/512/SHA3 for integrity.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title" style="margin-top:32px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13V2l8 4-8 4"></path><path d="M20 22H4a2 2 0 0 1-2-2V7"></path><path d="m9 16 2 2 4-4"></path></svg>
+      Integrity checker (recompute &amp; compare)
+    </div>
+    <div class="panel">
+      <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:14px; align-items:flex-start;">
+        <div>
+          <div class="badge">Data</div>
+          <textarea id="integrityText" placeholder="Paste data to verify...">Invoice #18472 | Amount: 4280.00 | Due: 2026-04-15</textarea>
+          <div class="row" style="margin-top:10px;">
+            <input type="file" id="fileInput" class="file-input" />
+            <label for="fileInput" class="btn secondary file-label">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              Choose file
+            </label>
+            <div class="pill">File hashing stays in-browser</div>
+          </div>
+        </div>
+        <div>
+          <div class="badge">Expected SHA-256</div>
+          <input type="text" id="expectedHash" placeholder="Optional: paste expected SHA-256 to verify" />
+          <div class="row" style="margin-top:10px;">
+            <button class="btn" id="computeIntegrity">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>
+              Compute &amp; check
+            </button>
+            <div id="status" class="status" style="display:none;"></div>
+          </div>
+          <p class="small" style="margin-top:10px;">Recompute hash locally, compare with expected. Any tampering flips the digest.</p>
+          <div id="integrityHashRow" class="hash-row" style="margin-top:10px;">
+            <div class="label">SHA-256</div>
+            <div id="integrityHashVal" class="mono"></div>
+            <button class="btn icon" data-copy="integrityHashVal" title="Copy SHA-256">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+          </div>
+          <div id="fileHashes" class="theory-bullets" style="margin-top:10px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title" style="margin-top:32px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+      Takeaways
+    </div>
+    <div class="panel">
+      <ul class="theory-bullets" style="grid-template-columns: repeat(auto-fit, minmax(260px,1fr)); display:grid;">
+        <li><strong>Collision resistance</strong>: modern hashes (SHA-256/512) make finding collisions computationally infeasible.</li>
+        <li><strong>Avalanche</strong>: single-bit flips scatter across the digest; integrity breaks are obvious.</li>
+        <li><strong>Integrity vs authenticity</strong>: hashes detect change, but do not prove who computed them; pair with HMAC or signatures.</li>
+        <li><strong>MD5/SHA-1</strong>: known collision attacks; avoid for integrity protection.</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    const inputEl = document.getElementById('inputText');
+    const hashesEl = document.getElementById('hashes');
+    const mutateBtn = document.getElementById('mutateBtn');
+
+    const integrityText = document.getElementById('integrityText');
+    const expectedHash = document.getElementById('expectedHash');
+    const computeIntegrity = document.getElementById('computeIntegrity');
+    const statusEl = document.getElementById('status');
+    const integrityHashVal = document.getElementById('integrityHashVal');
+    const integrityHashRow = document.getElementById('integrityHashRow');
+
+    function computeAll(str) {
+      return {
+        'MD5': CryptoJS.MD5(str).toString(),
+        'SHA-256': CryptoJS.SHA256(str).toString(),
+        'SHA-512': CryptoJS.SHA512(str).toString(),
+        'SHA3-256': CryptoJS.SHA3(str, { outputLength: 256 }).toString()
+      };
+    }
+
+    function renderHashes() {
+      const val = inputEl.value;
+      const hashes = computeAll(val);
+      hashesEl.innerHTML = '';
+      Object.entries(hashes).forEach(([name, digest]) => {
+        const row = document.createElement('div');
+        row.className = 'hash-row';
+        row.innerHTML = `<div class="label">${name}</div><div class="mono">${digest}</div><button class="btn icon" data-copy="${digest}" title="Copy ${name}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>`;
+        hashesEl.appendChild(row);
+      });
+    }
+
+    function copyText(text) {
+      navigator.clipboard?.writeText(text).catch(() => {});
+    }
+
+    function mutateOneChar() {
+      const txt = inputEl.value;
+      if (!txt.length) return;
+      const idx = Math.floor(Math.random() * txt.length);
+      const c = txt[idx];
+      const flipped = String.fromCharCode(c.charCodeAt(0) ^ 1);
+      const out = txt.slice(0, idx) + flipped + txt.slice(idx + 1);
+      inputEl.value = out;
+      renderHashes();
+      Array.from(hashesEl.children).forEach(row => {
+        row.classList.add('changed');
+        setTimeout(() => row.classList.remove('changed'), 600);
+      });
+    }
+
+    function computeIntegrityHash() {
+      const data = integrityText.value;
+      const digest = CryptoJS.SHA256(data).toString();
+      integrityHashVal.textContent = digest;
+      integrityHashRow.classList.add('changed');
+      setTimeout(() => integrityHashRow.classList.remove('changed'), 500);
+      const expected = expectedHash.value.trim();
+      if (expected.length === 64) {
+        const match = digest.toLowerCase() === expected.toLowerCase();
+        statusEl.style.display = 'inline-flex';
+        statusEl.className = 'status ' + (match ? 'good' : 'bad');
+        statusEl.innerHTML = match
+          ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c7f5df" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 12 2 2 4-4"></path><circle cx="12" cy="12" r="10"></circle></svg> Integrity intact'
+          : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffd7d7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m9 9 6 6M15 9l-6 6"></path></svg> Mismatch detected';
+      } else {
+        statusEl.style.display = 'none';
+      }
+    }
+
+    function hashFile(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const wordArray = CryptoJS.lib.WordArray.create(reader.result);
+          resolve({
+            name: file.name,
+            size: file.size,
+            sha256: CryptoJS.SHA256(wordArray).toString(),
+            sha512: CryptoJS.SHA512(wordArray).toString()
+          });
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    document.getElementById('fileInput').addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      const fileHashes = document.getElementById('fileHashes');
+      fileHashes.innerHTML = '';
+      if (!file) return;
+      const res = await hashFile(file);
+      fileHashes.innerHTML = `
+        <li><strong>File:</strong> ${res.name} (${(res.size/1024).toFixed(1)} KB)</li>
+        <li><strong>SHA-256:</strong> ${res.sha256}</li>
+        <li><strong>SHA-512:</strong> ${res.sha512}</li>
+      `;
+    });
+
+    inputEl.addEventListener('input', renderHashes);
+    mutateBtn.addEventListener('click', mutateOneChar);
+    computeIntegrity.addEventListener('click', computeIntegrityHash);
+    hashesEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-copy]');
+      if (btn) copyText(btn.getAttribute('data-copy'));
+    });
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-copy="integrityHashVal"]');
+      if (btn) copyText(integrityHashVal.textContent.trim());
+    });
+
+    document.querySelectorAll('button[data-preset]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const preset = btn.getAttribute('data-preset');
+        const presets = {
+          pangram: 'The quick brown fox jumps over the lazy dog.',
+          lorem: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer vitae.',
+          json: '{"user":"alice","role":"admin","exp":1715702400}'
+        };
+        inputEl.value = presets[preset] || '';
+        renderHashes();
+      });
+    });
+
+    renderHashes();
+    computeIntegrityHash();
+  </script>
+</body>
+</html>
